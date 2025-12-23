@@ -1,114 +1,128 @@
 ﻿#include <iostream>
-#include <cmath>
+#include <fstream>
+#include <sstream>
+#include <vector>
+#include <string>
+#include <iomanip>
 
-using namespace std;
-
-class Aircraft {
-protected:
-    double mass;   
-    double x, y, z; 
-    double vx, vy, vz; 
-
+class Trajectory {
 public:
-    Aircraft(double m, double x0, double y0, double z0,
-        double vx0, double vy0, double vz0)
-        : mass(m), x(x0), y(y0), z(z0),
-        vx(vx0), vy(vy0), vz(vz0) {
+    std::vector<double> t;
+    std::vector<double> x;
+
+    bool loadFromFile(const std::string& filename) {
+        t.clear();
+        x.clear();
+
+        std::ifstream in(filename.c_str());
+        if (!in.is_open()) return false;
+
+        std::string line;
+        if (!std::getline(in, line)) return false;
+
+        while (std::getline(in, line)) {
+            if (line.empty()) continue;
+
+            std::stringstream ss(line);
+            std::string a, b;
+            if (!std::getline(ss, a, ',')) continue;
+            if (!std::getline(ss, b, ',')) continue;
+
+            double tt = 0.0;
+            double xx = 0.0;
+
+            if (!toDouble(a, tt)) continue;
+            if (!toDouble(b, xx)) continue;
+
+            t.push_back(tt);
+            x.push_back(xx);
+        }
+
+        return t.size() >= 2 && x.size() == t.size();
     }
 
-    virtual ~Aircraft() {}
+    std::vector<double> computeVelocity() const {
+        std::vector<double> v;
+        if (t.size() < 2) return v;
 
-    void updatePosition(double dt) {
-        x += vx * dt;
-        y += vy * dt;
-        z += vz * dt;
+        v.reserve(t.size() - 1);
+        for (size_t i = 0; i + 1 < t.size(); ++i) {
+            double dt = t[i + 1] - t[i];
+            if (dt == 0.0) v.push_back(0.0);
+            else v.push_back((x[i + 1] - x[i]) / dt);
+        }
+        return v;
     }
 
-    virtual void printStatus() {
-        cout << "Position: (" << x << ", " << y << ", " << z << ") m" << endl;
-        cout << "Velocity: (" << vx << ", " << vy << ", " << vz << ") m/s" << endl;
+    bool saveCleanCSV(const std::string& filename) const {
+        std::ofstream out(filename.c_str());
+        if (!out.is_open()) return false;
+
+        out << "t,x\n";
+        out << std::fixed << std::setprecision(6);
+        for (size_t i = 0; i < t.size(); ++i) {
+            out << t[i] << "," << x[i] << "\n";
+        }
+        return true;
     }
 
-    double getVx() const { return vx; }
-    double getVy() const { return vy; }
-    double getVz() const { return vz; }
-};
+    bool generateGnuplotScript(const std::string& script_name,
+                              const std::string& csv_name,
+                              const std::string& out_png) const {
+        std::ofstream out(script_name.c_str());
+        if (!out.is_open()) return false;
 
-class JetAircraft : public Aircraft {
+        out << "set datafile separator ','\n";
+        out << "set grid\n";
+        out << "set terminal pngcairo size 1000,600\n";
+        out << "set output '" << out_png << "'\n";
+        out << "set title 'x(t)'\n";
+        out << "set xlabel 't'\n";
+        out << "set ylabel 'x'\n";
+        out << "plot '" << csv_name << "' using 1:2 with linespoints title 'x(t)'\n";
+        return true;
+    }
+
 private:
-    double thrust; 
-    double Cd;     
-    double S;     
-    double rho;    
-    double fuel;   
-    double g;      
-
-public:
-    JetAircraft(double m, double x0, double y0, double z0,
-        double vx0, double vy0, double vz0,
-        double t, double cd, double s,
-        double r, double f, double gravity = 9.81)
-        : Aircraft(m, x0, y0, z0, vx0, vy0, vz0),
-        thrust(t), Cd(cd), S(s), rho(r), fuel(f), g(gravity) {
+    static std::string trim(const std::string& s) {
+        size_t a = 0;
+        while (a < s.size() && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r' || s[a] == '\n')) a++;
+        size_t b = s.size();
+        while (b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r' || s[b - 1] == '\n')) b--;
+        return s.substr(a, b - a);
     }
 
-    double computeDrag() {
-        double speed = sqrt(vx * vx + vy * vy + vz * vz);
-        return 0.5 * Cd * rho * S * speed * speed;
+    static bool toDouble(const std::string& s, double& out) {
+        std::string t = trim(s);
+        if (t.empty()) return false;
+        char* endp = 0;
+        out = std::strtod(t.c_str(), &endp);
+        if (endp == t.c_str()) return false;
+        while (*endp == ' ' || *endp == '\t' || *endp == '\r' || *endp == '\n') endp++;
+        return *endp == '\0';
     }
-
-    void simulateStep(double dt) {
-        if (fuel <= 0) return;
-
-        double drag = computeDrag();
-        double speed = sqrt(vx * vx + vy * vy + vz * vz + 1e-6);
-        double drag_x = -drag * (vx / speed);
-        double drag_y = -drag * (vy / speed);
-        double drag_z = -drag * (vz / speed);
-
-        double thrust_z = thrust;
-
-        double gravity_force = mass * g;
-
-        double ax = drag_x / mass;
-        double ay = drag_y / mass;
-        double az = (thrust_z - gravity_force) / mass - drag_z / mass;
-
-        vx += ax * dt;
-        vy += ay * dt;
-        vz += az * dt;
-
-        updatePosition(dt);
-
-        double fuel_consumption = 0.001 * thrust * dt;
-        fuel = max(0.0, fuel - fuel_consumption);
-    }
-
-    virtual void printStatus() override {
-        Aircraft::printStatus();
-        cout << "Fuel: " << fuel << " kg" << endl;
-        cout << "Thrust: " << thrust << " N" << endl;
-    }
-
-    double getFuel() const { return fuel; }
 };
 
 int main() {
-    JetAircraft plane(20000, 0, 0, 0, 100, 0, 50,
-        150000, 0.02, 50, 1.225, 5000);
-
-    double dt = 0.5;
-    int step = 0;
-
-    while (plane.getFuel() > 0 && plane.getVz() > 0) {
-        cout << "\nStep " << step << ":" << endl;
-        plane.printStatus();
-        plane.simulateStep(dt);
-        step++;
+    Trajectory tr;
+    if (!tr.loadFromFile("traj.csv")) {
+        std::cout << "Error: cannot open traj.csv\n";
+        return 1;
     }
 
-    cout << "\nSimulation ended." << endl;
-    plane.printStatus();
+    std::vector<double> v = tr.computeVelocity();
 
+    std::cout << std::fixed << std::setprecision(3);
+    std::cout << "Loaded points: " << tr.t.size() << "\n";
+    std::cout << "Velocities:\n";
+    for (size_t i = 0; i < v.size(); ++i) {
+        std::cout << "v[" << i << "]=" << v[i] << "\n";
+    }
+
+    tr.saveCleanCSV("traj_clean.csv");
+    tr.generateGnuplotScript("plot.plt", "traj_clean.csv", "plot.png");
+
+    std::cout << "Saved: traj_clean.csv, plot.plt\n";
+    std::cout << "To build plot: gnuplot plot.plt\n";
     return 0;
 }
