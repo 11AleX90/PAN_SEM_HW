@@ -699,7 +699,7 @@ void create_gnuplot_scripts(const TrajectoryResult& traj_time, const TrajectoryR
     comp_script << "# GNUPLOT script for trajectory comparison\n";
     comp_script << "set terminal pngcairo size 1200,800 enhanced font 'Verdana,12'\n";
     comp_script << "set output 'YAK-40_comparison.png'\n\n";
-    comp_script << "set title 'YAK-40 Trajectory Comparison (Variant 1)'\n";
+    comp_script << "set title 'YAK-40 Trajectory Comparison (Variant 13)'\n";
     comp_script << "set xlabel 'Speed V (km/h)'\n";
     comp_script << "set ylabel 'Altitude H (m)'\n";
     comp_script << "set grid\n";
